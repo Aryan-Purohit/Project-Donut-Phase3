@@ -3,6 +3,7 @@ package application;
 import java.io.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -412,4 +413,18 @@ public class Login {
             System.out.println("Error during restore: " + e.getMessage());
         }
     }
+    
+ // In Login.java
+    public boolean deleteGroup(String groupName) {
+        Iterator<Group> iterator = groups.iterator();
+        while (iterator.hasNext()) {
+            Group group = iterator.next();
+            if (group.getGroupName().equals(groupName)) {
+                iterator.remove();
+                return true;
+            }
+        }
+        return false;
+    }
+
 }

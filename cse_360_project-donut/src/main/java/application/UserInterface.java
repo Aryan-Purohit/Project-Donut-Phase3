@@ -12,7 +12,6 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class UserInterface extends Application {
@@ -35,6 +34,7 @@ public class UserInterface extends Application {
     // Method to display the login screen
     private void showLoginScreen() {
         VBox vbox = new VBox(10); // Vertical box layout with spacing of 10 pixels
+        vbox.setPadding(new Insets(20));
 
         // Username input field
         TextField usernameField = new TextField();
@@ -53,15 +53,15 @@ public class UserInterface extends Application {
             String password = passwordField.getText();
 
             // If no users exist, register the first user as an Admin
-            if (Login.getInstance().listUsers().isEmpty()) {
-                User newUser = Login.getInstance().registerUser(username, password, "Admin", false, null);
+            if (loginInstance.listUsers().isEmpty()) {
+                User newUser = loginInstance.registerUser(username, password, "Admin", false, null);
                 currentUser = newUser; // Set the current user
                 showRegistrationScreen(newUser);
             } else {
                 // Authenticate the user
-                boolean isAuthenticated = Login.getInstance().authenticate(username, password);
+                boolean isAuthenticated = loginInstance.authenticate(username, password);
                 if (isAuthenticated) {
-                    User user = Login.getInstance().findUser(username);
+                    User user = loginInstance.findUser(username);
                     currentUser = user; // Set the current user
                     if (user != null && !user.isAccountSetupComplete()) {
                         // If account setup is incomplete, show the registration screen
@@ -88,6 +88,7 @@ public class UserInterface extends Application {
     // Method to display the registration screen for account setup
     private void showRegistrationScreen(User user) {
         VBox vbox = new VBox(10);
+        vbox.setPadding(new Insets(20));
 
         // Input fields for user details
         TextField emailField = new TextField();
@@ -145,7 +146,7 @@ public class UserInterface extends Application {
         vbox.getChildren().addAll(emailField, firstNameField, middleNameField, lastNameField, preferredNameField, registerButton);
 
         // Set the scene and display the registration screen
-        Scene registerScene = new Scene(vbox, 400, 400);
+        Scene registerScene = new Scene(vbox, 400, 600);
         window.setScene(registerScene);
         window.show();
     }
@@ -153,6 +154,7 @@ public class UserInterface extends Application {
     // Method to display the role selection screen
     private void showRoleSelectionScreen(User user) {
         VBox vbox = new VBox(10);
+        vbox.setPadding(new Insets(20));
 
         // ComboBox to select the user's role
         ComboBox<String> roleDropdown = new ComboBox<>();
@@ -186,6 +188,9 @@ public class UserInterface extends Application {
 
     // Method to display the student's home page
     private void showSimpleHomePage(User user) {
+        // Existing code for the student's home page
+        // ...
+
         currentUser = user; // Set the current user
 
         VBox vbox = new VBox(10);
@@ -312,7 +317,7 @@ public class UserInterface extends Application {
         sendGenericMessageButton.setOnAction(e -> {
             String messageContent = genericMessageArea.getText();
             if (messageContent != null && !messageContent.isEmpty()) {
-                currentUser.sendMessage("Generic Message: " + messageContent);
+                loginInstance.addMessage(currentUser.getUsername(), "Generic Message: " + messageContent);
                 genericMessageArea.clear();
                 System.out.println("Generic message sent.");
             } else {
@@ -328,7 +333,7 @@ public class UserInterface extends Application {
         sendSpecificMessageButton.setOnAction(e -> {
             String messageContent = specificMessageArea.getText();
             if (messageContent != null && !messageContent.isEmpty()) {
-                currentUser.sendMessage("Specific Message: " + messageContent);
+                loginInstance.addMessage(currentUser.getUsername(), "Specific Message: " + messageContent);
                 specificMessageArea.clear();
                 System.out.println("Specific message sent.");
             } else {
@@ -378,7 +383,6 @@ public class UserInterface extends Application {
 
         VBox vbox = new VBox(10);
         vbox.setPadding(new Insets(20));
-        Button logoutButton = new Button("Logout");
 
         // Search functionality components (same as student)
         TextField searchField = new TextField();
@@ -415,7 +419,7 @@ public class UserInterface extends Application {
 
         // Event handler for the search button
         searchButton.setOnAction(e -> {
-            String keyword = searchField.getText();
+            String keyword = searchField.getText().trim().toLowerCase();
             String selectedLevel = levelComboBox.getValue();
             String selectedGroup = groupComboBox.getValue();
 
@@ -424,11 +428,16 @@ public class UserInterface extends Application {
 
             activeGroupLabel.setText("Active Group: " + currentGroup);
 
-            List<User.HelpArticle> results;
+            List<User.HelpArticle> results = new ArrayList<>();
+
+            // Collect all help articles from all users
+            for (User u : loginInstance.listUsers()) {
+                results.addAll(u.getAllHelpArticles());
+            }
+
+            // Filter articles based on keyword
             if (keyword != null && !keyword.isEmpty()) {
-                results = currentUser.searchHelpArticles(keyword.trim());
-            } else {
-                results = currentUser.getAllHelpArticles();
+                results.removeIf(article -> !articleMatchesKeyword(article, keyword));
             }
 
             // Filter articles by group and level
@@ -537,19 +546,18 @@ public class UserInterface extends Application {
                     try {
                         int sequenceNumber = Integer.parseInt(sequenceStr.trim());
                         User.HelpArticle article = sequenceToArticleMap.get(sequenceNumber);
-                        if (article != null) {
+                        if (article != null && article.getAuthor().equals(currentUser.getUsername())) {
                             // Update the article with new details
-                            currentUser.updateHelpArticle(
-                                    article.getId(),
-                                    titleField.getText(),
-                                    descriptionField.getText(),
-                                    Arrays.asList(keywordsField.getText().split(",")),
-                                    bodyArea.getText(),
-                                    new ArrayList<>(),
-                                    Arrays.asList(groupsField.getText().split(",")),
-                                    levelField.getText());
+                            article.setTitle(titleField.getText());
+                            article.setDescription(descriptionField.getText());
+                            article.setKeywords(Arrays.asList(keywordsField.getText().split(",")));
+                            article.setBody(bodyArea.getText());
+                            article.setGroups(Arrays.asList(groupsField.getText().split(",")));
+                            article.setLevel(levelField.getText());
                             System.out.println("Article updated.");
                             clearArticleInputFields(titleField, descriptionField, keywordsField, bodyArea, groupsField, levelField);
+                        } else {
+                            System.out.println("You can only edit your own articles.");
                         }
                     } catch (NumberFormatException ex) {
                         System.out.println("Invalid sequence number.");
@@ -570,10 +578,12 @@ public class UserInterface extends Application {
                     try {
                         int sequenceNumber = Integer.parseInt(sequenceStr.trim());
                         User.HelpArticle article = sequenceToArticleMap.get(sequenceNumber);
-                        if (article != null) {
+                        if (article != null && article.getAuthor().equals(currentUser.getUsername())) {
                             currentUser.removeHelpArticle(article.getId());
                             System.out.println("Article deleted.");
                             articlesListView.getItems().remove(selectedItem);
+                        } else {
+                            System.out.println("You can only delete your own articles.");
                         }
                     } catch (NumberFormatException ex) {
                         System.out.println("Invalid sequence number.");
@@ -665,13 +675,14 @@ public class UserInterface extends Application {
         });
 
         // Backup and Restore buttons
-        Button backupButton = new Button("Backup Articles and Groups");
-        Button restoreButton = new Button("Restore Articles and Groups");
+        Button backupButton = new Button("Backup Articles");
+        Button restoreButton = new Button("Restore Articles");
 
-        backupButton.setOnAction(e -> backupArticlesAndGroups());
-        restoreButton.setOnAction(e -> restoreArticlesAndGroups());
+        backupButton.setOnAction(e -> backupArticles());
+        restoreButton.setOnAction(e -> restoreArticles());
 
-        // Event handler for the logout button
+        // Logout button
+        Button logoutButton = new Button("Logout");
         logoutButton.setOnAction(e -> {
             System.out.println("Logging out.");
             showLoginScreen(); // Return to login screen
@@ -697,7 +708,7 @@ public class UserInterface extends Application {
                 activeGroupLabel,
                 articleCountLabel,
                 new Label("Search Results:"),
-                articlesListView,
+                articlesListView, // Add the articlesListView to the layout
                 new Separator(),
                 new Label("Article Management:"),
                 titleField, descriptionField, keywordsField, bodyArea, groupsField, levelField,
@@ -709,12 +720,32 @@ public class UserInterface extends Application {
                 new Separator(),
                 backupButton, restoreButton,
                 new Separator(),
-                logoutButton);
+                logoutButton); // Ensure logoutButton is added
 
         // Set the scene and display the instructor dashboard
-        Scene instructorScene = new Scene(vbox, 800, 1000);
+        Scene instructorScene = new Scene(vbox, 800, 1000); // Increased window height
         window.setScene(instructorScene);
         window.show();
+    }
+    
+    // Helper method to check if an article matches the keyword
+    private boolean articleMatchesKeyword(User.HelpArticle article, String keyword) {
+        if (article.getTitle().toLowerCase().contains(keyword)) {
+            return true;
+        }
+        if (article.getDescription().toLowerCase().contains(keyword)) {
+            return true;
+        }
+        if (article.getBody(currentUser).toLowerCase().contains(keyword)) {
+            return true;
+        }
+        // Check keywords
+        for (String k : article.getKeywords()) {
+            if (k.toLowerCase().contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Method to clear article input fields
@@ -751,20 +782,19 @@ public class UserInterface extends Application {
         }
     }
 
-    // Method to backup articles and groups to a file
-    private void backupArticlesAndGroups() {
+    // Method to backup articles to a file
+    private void backupArticles() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Save Backup");
         File file = fileChooser.showSaveDialog(window); // Show save dialog
         if (file != null) {
             loginInstance.backupHelpArticles(file.getAbsolutePath(), currentUser); // Backup articles
-            // Implement backup of groups if needed
             System.out.println("Backup completed.");
         }
     }
 
-    // Method to restore articles and groups from a file
-    private void restoreArticlesAndGroups() {
+    // Method to restore articles from a file
+    private void restoreArticles() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Open Backup File");
         File file = fileChooser.showOpenDialog(window); // Show open dialog
@@ -774,58 +804,51 @@ public class UserInterface extends Application {
             alert.showAndWait().ifPresent(response -> {
                 boolean merge = response == ButtonType.YES;
                 loginInstance.restoreHelpArticles(file.getAbsolutePath(), merge, currentUser); // Restore articles
-                // Implement restore of groups if needed
                 System.out.println("Restore completed.");
             });
         }
     }
-
+    
+    // Adjusted method for deleting a group in Login class (Assuming we can add it)
+    private boolean deleteGroupByName(String groupName) {
+        return loginInstance.deleteGroup(groupName);
+    }
+    
+    
 
     // Method to display the admin dashboard
     private void showAdminDashboard(User user) {
         currentUser = user; // Set the current user
+
         VBox vbox = new VBox(10);
+        vbox.setPadding(new Insets(20));
 
-        // Input fields for user management
+        // User Management Components
+        Label userManagementLabel = new Label("User Management:");
         TextField usernameField = new TextField();
-        usernameField.setPromptText("Enter Username");
+        usernameField.setPromptText("Username");
 
-        TextField newUserPasswordField = new TextField();
-        newUserPasswordField.setPromptText("Enter Password");
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("Password");
 
-        // ComboBox to select user role
         ComboBox<String> roleComboBox = new ComboBox<>();
-        roleComboBox.getItems().addAll("Student", "Instructor");
-        roleComboBox.setValue("Student"); // Default role
+        roleComboBox.getItems().addAll("Student", "Instructor", "Admin");
+        roleComboBox.setValue("Student");
 
-        // Group management fields
-        TextField groupNameField = new TextField();
-        groupNameField.setPromptText("Enter Group Name");
-
-        CheckBox specialAccessCheckBox = new CheckBox("Special Access Group");
-
-        // Buttons for user management
         Button addUserButton = new Button("Add User");
         Button deleteUserButton = new Button("Delete User");
-        Button resetPasswordButton = new Button("Reset Password");
         Button listUsersButton = new Button("List Users");
-        Button addArticleButton = new Button("Manage Articles");
-        Button createGroupButton = new Button("Create Group");
-        Button addUserToGroupButton = new Button("Add User to Group");
-        Button removeUserFromGroupButton = new Button("Remove User from Group");
-        Button listGroupsButton = new Button("List Groups");
-        Button logoutButton = new Button("Logout");
 
         // Event handler for adding a user
         addUserButton.setOnAction(e -> {
             String username = usernameField.getText();
-            String password = newUserPasswordField.getText();
+            String password = passwordField.getText();
             String role = roleComboBox.getValue();
             boolean isOneTimePassword = false;
 
             // Register the new user
             if (!username.isEmpty() && !password.isEmpty()) {
-                User newUser = Login.getInstance().registerUser(username, password, role, isOneTimePassword, null);
+                User newUser = loginInstance.registerUser(username, password, role, isOneTimePassword, null);
                 if (newUser != null) {
                     System.out.println("User added successfully.");
                 } else {
@@ -840,7 +863,7 @@ public class UserInterface extends Application {
         deleteUserButton.setOnAction(e -> {
             String usernameToDelete = usernameField.getText();
             if (!usernameToDelete.isEmpty()) {
-                boolean isDeleted = Login.getInstance().deleteUser(usernameToDelete);
+                boolean isDeleted = loginInstance.deleteUser(usernameToDelete);
                 if (isDeleted) {
                     System.out.println("User deleted successfully.");
                 } else {
@@ -851,25 +874,24 @@ public class UserInterface extends Application {
             }
         });
 
-        // Event handler for resetting a user's password
-        resetPasswordButton.setOnAction(e -> {
-            String usernameToReset = usernameField.getText();
-            if (!usernameToReset.isEmpty()) {
-                String newPassword = newUserPasswordField.getText();
-                if (!newPassword.isEmpty()) {
-                    boolean isReset = Login.getInstance().resetPassword(usernameToReset, newPassword);
-                    if (isReset) {
-                        System.out.println("Password reset successfully.");
-                    } else {
-                        System.out.println("Failed to reset password. User may not exist.");
-                    }
-                } else {
-                    System.out.println("Please enter a new password.");
-                }
-            } else {
-                System.out.println("Please enter a username.");
+        // Event handler for listing all users
+        listUsersButton.setOnAction(e -> {
+            System.out.println("Listing all users:");
+            for (User u : loginInstance.listUsers()) {
+                System.out.println("Username: " + u.getUsername() + ", Role: " + u.getRole());
             }
         });
+
+        // Group Management Components
+        Label groupManagementLabel = new Label("Group Management:");
+        TextField groupNameField = new TextField();
+        groupNameField.setPromptText("Group Name");
+
+        CheckBox specialAccessCheckBox = new CheckBox("Special Access Group");
+
+        Button createGroupButton = new Button("Create Group");
+        Button deleteGroupButton = new Button("Delete Group");
+        Button listGroupsButton = new Button("List Groups");
 
         // Event handler for creating a group
         createGroupButton.setOnAction(e -> {
@@ -887,11 +909,40 @@ public class UserInterface extends Application {
             }
         });
 
+        // Event handler for deleting a group
+        deleteGroupButton.setOnAction(e -> {
+            String groupName = groupNameField.getText();
+            if (!groupName.isEmpty()) {
+                boolean isDeleted = loginInstance.deleteGroup(groupName);
+                if (isDeleted) {
+                    System.out.println("Group deleted successfully.");
+                } else {
+                    System.out.println("Failed to delete group.");
+                }
+            } else {
+                System.out.println("Please enter a group name.");
+            }
+        });
+
+        // Event handler for listing all groups
+        listGroupsButton.setOnAction(e -> {
+            System.out.println("Listing all groups:");
+            for (Group g : loginInstance.listGroups()) {
+                System.out.println("Group: " + g.getGroupName() + ", Special Access: " + g.isSpecialAccess());
+            }
+        });
+
+        // Group Membership Management
+        Label groupMembershipLabel = new Label("Group Membership Management:");
+        Button addUserToGroupButton = new Button("Add User to Group");
+        Button removeUserFromGroupButton = new Button("Remove User from Group");
+        Button listGroupMembersButton = new Button("List Group Members");
+
         // Event handler for adding a user to a group
         addUserToGroupButton.setOnAction(e -> {
-            String usernameToAdd = usernameField.getText();
             String groupName = groupNameField.getText();
-            if (!usernameToAdd.isEmpty() && !groupName.isEmpty()) {
+            String usernameToAdd = usernameField.getText();
+            if (!groupName.isEmpty() && !usernameToAdd.isEmpty()) {
                 User userToAdd = loginInstance.findUser(usernameToAdd);
                 if (userToAdd != null) {
                     boolean added = loginInstance.addUserToGroup(groupName, userToAdd);
@@ -904,15 +955,15 @@ public class UserInterface extends Application {
                     System.out.println("User not found.");
                 }
             } else {
-                System.out.println("Please enter a username and group name.");
+                System.out.println("Please enter both group name and username.");
             }
         });
 
         // Event handler for removing a user from a group
         removeUserFromGroupButton.setOnAction(e -> {
-            String usernameToRemove = usernameField.getText();
             String groupName = groupNameField.getText();
-            if (!usernameToRemove.isEmpty() && !groupName.isEmpty()) {
+            String usernameToRemove = usernameField.getText();
+            if (!groupName.isEmpty() && !usernameToRemove.isEmpty()) {
                 User userToRemove = loginInstance.findUser(usernameToRemove);
                 if (userToRemove != null) {
                     boolean removed = loginInstance.removeUserFromGroup(groupName, userToRemove);
@@ -925,54 +976,130 @@ public class UserInterface extends Application {
                     System.out.println("User not found.");
                 }
             } else {
-                System.out.println("Please enter a username and group name.");
+                System.out.println("Please enter both group name and username.");
             }
         });
 
-        // Event handler for listing all users
-        listUsersButton.setOnAction(e -> {
-            System.out.println("Listing all users:");
-            for (User u : loginInstance.listUsers()) {
-                System.out.println("Username: " + u.getUsername() + ", Role: " + u.getRole());
+        // Event handler for listing group members
+        listGroupMembersButton.setOnAction(e -> {
+            String groupName = groupNameField.getText();
+            if (!groupName.isEmpty()) {
+                Group group = loginInstance.getGroup(groupName);
+                if (group != null) {
+                    System.out.println("Members of group '" + groupName + "':");
+                    List<User> members = new ArrayList<>();
+                    members.addAll(group.getAdmins());
+                    members.addAll(group.getInstructors());
+                    members.addAll(group.getStudents());
+                    for (User member : members) {
+                        System.out.println("Username: " + member.getUsername() + ", Role: " + member.getRole());
+                    }
+                } else {
+                    System.out.println("Group not found.");
+                }
+            } else {
+                System.out.println("Please enter a group name.");
             }
         });
 
-        // Event handler for listing all groups
-        listGroupsButton.setOnAction(e -> {
-            System.out.println("Listing all groups:");
-            for (Group g : loginInstance.listGroups()) {
-                System.out.println("Group: " + g.getGroupName() + ", Special Access: " + g.isSpecialAccess());
+        // Article Management Components
+        Label articleManagementLabel = new Label("Article Management:");
+        TextField articleTitleField = new TextField();
+        articleTitleField.setPromptText("Article Title");
+
+        TextField articleDescriptionField = new TextField();
+        articleDescriptionField.setPromptText("Article Description");
+
+        TextField articleKeywordsField = new TextField();
+        articleKeywordsField.setPromptText("Keywords (comma-separated)");
+
+        TextField articleGroupsField = new TextField();
+        articleGroupsField.setPromptText("Groups (comma-separated)");
+
+        TextField articleLevelField = new TextField();
+        articleLevelField.setPromptText("Level (Beginner, Intermediate, Advanced, Expert)");
+
+        Button createArticleButton = new Button("Create Article");
+        Button deleteArticleButton = new Button("Delete Article");
+        Button listArticlesButton = new Button("List Articles");
+
+        // Map to keep track of articles
+        Map<Long, User.HelpArticle> articleMap = new HashMap<>();
+
+        // Event handler for creating an article
+        createArticleButton.setOnAction(e -> {
+            String title = articleTitleField.getText();
+            String description = articleDescriptionField.getText();
+            List<String> keywords = Arrays.asList(articleKeywordsField.getText().split(","));
+            List<String> groups = Arrays.asList(articleGroupsField.getText().split(","));
+            String level = articleLevelField.getText();
+
+            if (!title.isEmpty()) {
+                User.HelpArticle newArticle = new User.HelpArticle(
+                        System.currentTimeMillis(),
+                        title,
+                        description,
+                        keywords,
+                        "", // Empty body, as admin cannot edit or view body
+                        new ArrayList<>(),
+                        groups,
+                        level,
+                        currentUser.getUsername()
+                );
+                currentUser.addHelpArticle(newArticle);
+                articleMap.put(newArticle.getId(), newArticle);
+                System.out.println("Article created successfully.");
+            } else {
+                System.out.println("Please enter an article title.");
             }
         });
 
-        // Event handler to manage articles
-        addArticleButton.setOnAction(e -> {
-            showArticleDashboard(user); // Show article management dashboard
-        });
-
-        // Components to view messages
-        Button viewMessagesButton = new Button("View Messages");
-        ListView<String> messagesListView = new ListView<>();
-        viewMessagesButton.setOnAction(e -> {
-            List<Login.Message> messages = loginInstance.getMessages();
-            messagesListView.getItems().clear();
-            for (Login.Message message : messages) {
-                messagesListView.getItems().add("From: " + message.getUsername() + " | " + message.getTimestamp() + "\n" + message.getContent());
+        // Event handler for deleting an article
+        deleteArticleButton.setOnAction(e -> {
+            String title = articleTitleField.getText();
+            if (!title.isEmpty()) {
+                boolean found = false;
+                for (User userItem : loginInstance.listUsers()) {
+                    for (User.HelpArticle article : userItem.getAllHelpArticles()) {
+                        if (article.getTitle().equals(title)) {
+                            userItem.removeHelpArticle(article.getId());
+                            articleMap.remove(article.getId());
+                            System.out.println("Article deleted successfully.");
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) break;
+                }
+                if (!found) {
+                    System.out.println("Article not found.");
+                }
+            } else {
+                System.out.println("Please enter an article title.");
             }
         });
 
-        // Components to view search history
-        Button viewSearchHistoryButton = new Button("View Search History");
-        ListView<String> searchHistoryListView = new ListView<>();
-        viewSearchHistoryButton.setOnAction(e -> {
-            List<Login.SearchQuery> searchQueries = loginInstance.getSearchQueries();
-            searchHistoryListView.getItems().clear();
-            for (Login.SearchQuery query : searchQueries) {
-                searchHistoryListView.getItems().add("User: " + query.getUsername() + " | " + query.getTimestamp() + "\nQuery: " + query.getQuery());
+        // Event handler for listing all articles
+        listArticlesButton.setOnAction(e -> {
+            System.out.println("Listing all articles:");
+            articleMap.clear();
+            for (User userItem : loginInstance.listUsers()) {
+                for (User.HelpArticle article : userItem.getAllHelpArticles()) {
+                    System.out.println("Title: " + article.getTitle() + ", Author: " + article.getAuthor());
+                    articleMap.put(article.getId(), article);
+                }
             }
         });
 
-        // Event handler for the logout button
+        // Backup and Restore Buttons
+        Button backupButton = new Button("Backup Articles");
+        Button restoreButton = new Button("Restore Articles");
+
+        backupButton.setOnAction(e -> backupArticles());
+        restoreButton.setOnAction(e -> restoreArticles());
+
+        // Logout button
+        Button logoutButton = new Button("Logout");
         logoutButton.setOnAction(e -> {
             System.out.println("Logging out.");
             showLoginScreen(); // Return to login screen
@@ -981,148 +1108,37 @@ public class UserInterface extends Application {
         // Add components to the layout
         vbox.getChildren().addAll(
                 new Label("Admin Dashboard"),
-                usernameField,
-                newUserPasswordField,
-                roleComboBox,
-                addUserButton,
-                deleteUserButton,
-                resetPasswordButton,
-                listUsersButton,
                 new Separator(),
+                userManagementLabel,
+                usernameField,
+                passwordField,
+                roleComboBox,
+                new HBox(10, addUserButton, deleteUserButton, listUsersButton),
+                new Separator(),
+                groupManagementLabel,
                 groupNameField,
                 specialAccessCheckBox,
-                createGroupButton,
-                addUserToGroupButton,
-                removeUserFromGroupButton,
-                listGroupsButton,
+                new HBox(10, createGroupButton, deleteGroupButton, listGroupsButton),
                 new Separator(),
-                addArticleButton,
+                groupMembershipLabel,
+                new HBox(10, addUserToGroupButton, removeUserFromGroupButton, listGroupMembersButton),
                 new Separator(),
-                viewMessagesButton, messagesListView,
+                articleManagementLabel,
+                articleTitleField,
+                articleDescriptionField,
+                articleKeywordsField,
+                articleGroupsField,
+                articleLevelField,
+                new HBox(10, createArticleButton, deleteArticleButton, listArticlesButton),
                 new Separator(),
-                viewSearchHistoryButton, searchHistoryListView,
+                backupButton,
+                restoreButton,
                 new Separator(),
-                logoutButton
-        );
+                logoutButton);
 
         // Set the scene and display the admin dashboard
-        Scene adminScene = new Scene(vbox, 600, 800);
+        Scene adminScene = new Scene(vbox, 800, 1000);
         window.setScene(adminScene);
-        window.show();
-    }
-    
-    // Method to display the admin's article management dashboard
-    private void showArticleDashboard(User user) {
-        VBox vbox = new VBox(10);
-
-        // Input fields for article details
-        TextField titleField = new TextField();
-        titleField.setPromptText("Title");
-
-        TextField descriptionField = new TextField();
-        descriptionField.setPromptText("Description");
-
-        TextField keywordsField = new TextField();
-        keywordsField.setPromptText("Keywords (comma-separated)");
-
-        TextArea bodyArea = new TextArea();
-        bodyArea.setPromptText("Body of the article");
-
-        TextField groupsField = new TextField();
-        groupsField.setPromptText("Groups (comma-separated)");
-
-        TextField levelField = new TextField();
-        levelField.setPromptText("Level (Beginner, Intermediate, Advanced, Expert)");
-
-        // Button to add a new article
-        Button addArticleButton = new Button("Add Article");
-        addArticleButton.setOnAction(e -> addArticle(
-                titleField.getText(), descriptionField.getText(),
-                Arrays.asList(keywordsField.getText().split(",")),
-                bodyArea.getText(), new ArrayList<>(),
-                Arrays.asList(groupsField.getText().split(",")), levelField.getText()));
-
-        // Search functionality components
-        TextField searchField = new TextField();
-        searchField.setPromptText("Enter keyword to search");
-
-        Button searchButton = new Button("Search Articles");
-        Button listArticlesButton = new Button("List All Articles");
-
-        ListView<String> articlesListView = new ListView<>(); // ListView to display article titles
-
-        // Map to associate article titles with their IDs for deletion
-        Map<String, Long> articleTitleToIdMap = new HashMap<>();
-
-        // Event handler for the search button
-        searchButton.setOnAction(e -> {
-            String keyword = searchField.getText();
-            if (keyword != null && !keyword.isEmpty()) {
-                List<User.HelpArticle> results = currentUser.searchHelpArticles(keyword.trim());
-                articlesListView.getItems().clear();
-                articleTitleToIdMap.clear();
-                for (User.HelpArticle article : results) {
-                    articlesListView.getItems().add(article.getTitle());
-                    articleTitleToIdMap.put(article.getTitle(), article.getId());
-                }
-            }
-        });
-
-        // Event handler for listing all articles
-        listArticlesButton.setOnAction(e -> {
-            List<User.HelpArticle> articles = currentUser.getAllHelpArticles();
-            articlesListView.getItems().clear();
-            articleTitleToIdMap.clear();
-            for (User.HelpArticle article : articles) {
-                articlesListView.getItems().add(article.getTitle());
-                articleTitleToIdMap.put(article.getTitle(), article.getId());
-            }
-        });
-
-        // Button to delete the selected article
-        Button deleteArticleButton = new Button("Delete Selected Article");
-        deleteArticleButton.setOnAction(e -> {
-            String selectedTitle = articlesListView.getSelectionModel().getSelectedItem();
-            if (selectedTitle != null) {
-                Long articleId = articleTitleToIdMap.get(selectedTitle);
-                if (articleId != null) {
-                    currentUser.removeHelpArticle(articleId); // Remove article from user's list
-                    System.out.println("Article Deleted: " + selectedTitle);
-                    articlesListView.getItems().remove(selectedTitle); // Remove from ListView
-                }
-            } else {
-                System.out.println("No article selected for deletion.");
-            }
-        });
-
-        // Buttons for backup and restore functionality
-        Button backupButton = new Button("Backup Articles");
-        backupButton.setOnAction(e -> backupArticlesAndGroups());
-
-        Button restoreButton = new Button("Restore Articles");
-        restoreButton.setOnAction(e -> restoreArticlesAndGroups());
-
-        // Logout button
-        Button logoutButton = new Button("Back");
-        logoutButton.setOnAction(e -> {
-            System.out.println("Going Back.");
-            showAdminDashboard(user); // Return to admin screen
-        });
-
-        // Add components to the layout
-        vbox.getChildren().addAll(
-                new Label("Article Dashboard"),
-                titleField, descriptionField, keywordsField, bodyArea, groupsField, levelField,
-                addArticleButton,
-                new Separator(),
-                searchField, searchButton, listArticlesButton, articlesListView, deleteArticleButton,
-                new Separator(),
-                backupButton, restoreButton, logoutButton
-        );
-
-        // Set the scene and display the article dashboard
-        Scene articleScene = new Scene(vbox, 600, 800);
-        window.setScene(articleScene);
         window.show();
     }
 
