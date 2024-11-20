@@ -230,21 +230,22 @@ public class User implements Serializable {
             return isSpecialAccess;
         }
 
-        // Method to check if a user has access to the article
+     // In User.HelpArticle class
         public boolean userHasAccess(User user) {
-            // Admins have access to all articles
-            if (user.isAdmin()) {
+            // Check if the user is an admin or instructor
+            if (user.isAdmin() || user.isInstructor()) {
                 return true;
             }
-            // Check if user is in any of the article's groups
-            for (String group : groups) {
-                if (user.getGroupNames().contains(group)) {
+            // Check if the user is a member of any group associated with the article
+            for (String groupName : this.getGroups()) {
+                if (user.getGroupNames().contains(groupName)) {
                     return true;
                 }
             }
             return false;
         }
-
+        
+        
         // Method to get the body of the article, decrypting if necessary
         public String getBody(User user) {
             if (!userHasAccess(user)) {

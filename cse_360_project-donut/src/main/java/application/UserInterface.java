@@ -188,9 +188,6 @@ public class UserInterface extends Application {
 
     // Method to display the student's home page
     private void showSimpleHomePage(User user) {
-        // Existing code for the student's home page
-        // ...
-
         currentUser = user; // Set the current user
 
         VBox vbox = new VBox(10);
@@ -228,7 +225,7 @@ public class UserInterface extends Application {
 
         // Event handler for the search button
         searchButton.setOnAction(e -> {
-            String keyword = searchField.getText();
+            String keyword = searchField.getText().trim().toLowerCase();
             String selectedLevel = levelComboBox.getValue();
             String selectedGroup = groupComboBox.getValue();
 
@@ -237,22 +234,27 @@ public class UserInterface extends Application {
 
             activeGroupLabel.setText("Active Group: " + currentGroup);
 
-            List<User.HelpArticle> results;
+            // Collect all help articles from all users
+            List<User.HelpArticle> results = new ArrayList<>();
+            for (User u : loginInstance.listUsers()) {
+                results.addAll(u.getAllHelpArticles());
+            }
+
+            // Filter articles that the user has access to
+            results.removeIf(article -> !article.userHasAccess(currentUser));
+
+            // Filter articles based on keyword
             if (keyword != null && !keyword.isEmpty()) {
-                results = currentUser.searchHelpArticles(keyword.trim());
-            } else {
-                results = currentUser.getAllHelpArticles();
+                results.removeIf(article -> !articleMatchesKeyword(article, keyword));
             }
 
             // Filter articles by group and level
             List<User.HelpArticle> filteredArticles = new ArrayList<>();
             for (User.HelpArticle article : results) {
-                if (article.userHasAccess(currentUser)) {
-                    boolean groupMatch = currentGroup.equals("all") || article.getGroups().contains(currentGroup);
-                    boolean levelMatch = currentLevel.equals("All") || article.getLevel().equalsIgnoreCase(currentLevel);
-                    if (groupMatch && levelMatch) {
-                        filteredArticles.add(article);
-                    }
+                boolean groupMatch = currentGroup.equals("all") || article.getGroups().contains(currentGroup);
+                boolean levelMatch = currentLevel.equals("All") || article.getLevel().equalsIgnoreCase(currentLevel);
+                if (groupMatch && levelMatch) {
+                    filteredArticles.add(article);
                 }
             }
 
