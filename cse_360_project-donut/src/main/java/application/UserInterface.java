@@ -12,6 +12,7 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class UserInterface extends Application {
@@ -234,6 +235,9 @@ public class UserInterface extends Application {
 
             activeGroupLabel.setText("Active Group: " + currentGroup);
 
+            // ** Log the search query **
+            loginInstance.addSearchQuery(currentUser.getUsername(), keyword);
+
             // Collect all help articles from all users
             List<User.HelpArticle> results = new ArrayList<>();
             for (User u : loginInstance.listUsers()) {
@@ -429,6 +433,9 @@ public class UserInterface extends Application {
             currentGroup = selectedGroup;
 
             activeGroupLabel.setText("Active Group: " + currentGroup);
+
+            // ** Log the search query **
+            loginInstance.addSearchQuery(currentUser.getUsername(), keyword);
 
             List<User.HelpArticle> results = new ArrayList<>();
 
@@ -723,12 +730,17 @@ public class UserInterface extends Application {
                 backupButton, restoreButton,
                 new Separator(),
                 logoutButton); // Ensure logoutButton is added
+        
+        // Wrap the VBox in a ScrollPane
+        ScrollPane scrollPane = new ScrollPane(vbox);
+        scrollPane.setFitToWidth(true); // Ensure the scroll pane fits the width of the content
 
-        // Set the scene and display the instructor dashboard
-        Scene instructorScene = new Scene(vbox, 800, 1000); // Increased window height
+        // Set the scene with the scroll pane
+        Scene instructorScene = new Scene(scrollPane, 800, 600); // Adjusted window height to 600
         window.setScene(instructorScene);
         window.show();
     }
+
     
     // Helper method to check if an article matches the keyword
     private boolean articleMatchesKeyword(User.HelpArticle article, String keyword) {
@@ -1100,6 +1112,41 @@ public class UserInterface extends Application {
         backupButton.setOnAction(e -> backupArticles());
         restoreButton.setOnAction(e -> restoreArticles());
 
+        // View Messages and Search History
+        Label messagesLabel = new Label("Messages from Users:");
+        TextArea messagesArea = new TextArea();
+        messagesArea.setEditable(false);
+        messagesArea.setPrefRowCount(5);
+
+        Button refreshMessagesButton = new Button("Refresh Messages");
+
+        refreshMessagesButton.setOnAction(e -> {
+            messagesArea.clear();
+            List<Login.Message> messages = loginInstance.getMessages();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            for (Login.Message message : messages) {
+                messagesArea.appendText("[" + message.getTimestamp().format(formatter) + "] "
+                        + message.getUsername() + ": " + message.getContent() + "\n");
+            }
+        });
+
+        Label searchHistoryLabel = new Label("User Search History:");
+        TextArea searchHistoryArea = new TextArea();
+        searchHistoryArea.setEditable(false);
+        searchHistoryArea.setPrefRowCount(5);
+
+        Button refreshSearchHistoryButton = new Button("Refresh Search History");
+
+        refreshSearchHistoryButton.setOnAction(e -> {
+            searchHistoryArea.clear();
+            List<Login.SearchQuery> searchQueries = loginInstance.getSearchQueries();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            for (Login.SearchQuery query : searchQueries) {
+                searchHistoryArea.appendText("[" + query.getTimestamp().format(formatter) + "] "
+                        + query.getUsername() + " searched: " + query.getQuery() + "\n");
+            }
+        });
+
         // Logout button
         Button logoutButton = new Button("Logout");
         logoutButton.setOnAction(e -> {
@@ -1133,15 +1180,31 @@ public class UserInterface extends Application {
                 articleLevelField,
                 new HBox(10, createArticleButton, deleteArticleButton, listArticlesButton),
                 new Separator(),
-                backupButton,
-                restoreButton,
+                new Label("Backup and Restore Articles:"),
+                new HBox(10, backupButton, restoreButton),
+                new Separator(),
+                messagesLabel,
+                messagesArea,
+                refreshMessagesButton,
+                new Separator(),
+                searchHistoryLabel,
+                searchHistoryArea,
+                refreshSearchHistoryButton,
                 new Separator(),
                 logoutButton);
 
-        // Set the scene and display the admin dashboard
-        Scene adminScene = new Scene(vbox, 800, 1000);
+        // Wrap the VBox in a ScrollPane
+        ScrollPane scrollPane = new ScrollPane(vbox);
+        scrollPane.setFitToWidth(true); // Ensure the scroll pane fits the width of the content
+
+        // Set the scene with the scroll pane
+        Scene adminScene = new Scene(scrollPane, 800, 600); // Adjusted window height to 600
         window.setScene(adminScene);
         window.show();
+
+        // Auto-refresh messages and search history when the dashboard is opened
+        refreshMessagesButton.fire();
+        refreshSearchHistoryButton.fire();
     }
 
     public static void main(String[] args) {
